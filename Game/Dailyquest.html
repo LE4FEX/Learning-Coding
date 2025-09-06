@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Daily Quest N2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg1:#5b2cff; --bg2:#9b6bff; --bg3:#ede7ff;
+    --card:#ffffffee; --text:#1f2033; --accent:#6b46ff; --accent-weak:#c6baff;
+    --success:#2a9d8f; --radius:18px; --shadow:0 10px 30px rgba(30,12,100,.18);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:"Prompt",system-ui,Arial,sans-serif; color:var(--text);
+    background:
+      radial-gradient(1200px 700px at 10% -10%, rgba(255,255,255,.28), transparent 60%),
+      radial-gradient(900px 600px at 110% 10%, rgba(255,255,255,.18), transparent 55%),
+      linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 45%, var(--bg3) 100%);
+    min-height:100svh; padding:32px 16px 48px;
+  }
+  .container{max-width:720px;margin:0 auto}
+  .card{background:var(--card);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.5);
+    border-radius:calc(var(--radius)+6px);box-shadow:var(--shadow);padding:24px}
+  h1{margin:0 0 16px;text-align:center;font-weight:600;color:#2d2166}
+  .subtitle{text-align:center;margin:-4px 0 18px;color:#4a3db3;font-size:.95rem}
+  .toolbar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:8px 0 14px}
+  .btn{
+    border:1px solid #e5e0ff;background:#ffffffb8;border-radius:12px;padding:10px 14px;
+    font-weight:600; cursor:pointer; box-shadow:0 6px 14px rgba(60,30,160,.12)
+  }
+  .btn.primary{background:#6b46ff;color:#fff;border-color:#5c3de0}
+  .btn.danger{background:#ffe8e8;border-color:#ffc8c8;color:#a00000}
+  .progress-wrap{margin:14px 0 8px;background:#f7f5ff;border:1px solid var(--accent-weak);border-radius:999px;padding:6px}
+  .progress-bar{height:14px;width:0%;background:linear-gradient(90deg,#6b46ff,#9a7bff);border-radius:999px;transition:width .25s ease}
+  #totalEXP{text-align:center;font-size:1.1rem;margin-top:10px;color:#2d2166;font-weight:600}
+  .quest{background:#fff;border:1px solid #ece9ff;border-radius:var(--radius);padding:14px 16px;margin:12px 0;
+    box-shadow:0 4px 14px rgba(50,20,120,.06);display:flex;align-items:center;gap:12px;position:relative}
+  .quest:hover{box-shadow:0 10px 22px rgba(50,20,120,.12);border-color:#e1dbff}
+  .cb{appearance:none;width:22px;height:22px;border-radius:8px;border:2px solid var(--accent);background:#fff;
+    display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .2s}
+  .cb:focus-visible{outline:none;box-shadow:0 0 0 4px rgba(107,70,255,.25)}
+  .cb::after{content:"";width:12px;height:12px;border-radius:4px;transform:scale(0);background:var(--accent);transition:transform .15s}
+  .cb:checked::after{transform:scale(1)}
+  .label-text{flex:1}
+  .exp{font-weight:600;color:var(--success);background:#e9fbf7;border:1px solid #c7efe6;padding:4px 8px;border-radius:999px;font-size:.9rem;white-space:nowrap}
+  .del{display:none; position:absolute; right:10px; top:10px; border:none; background:#fff; border:1px solid #ffe1e1; color:#b30000;
+    padding:4px 8px; border-radius:10px; cursor:pointer}
+  .editing .del{display:inline-block}
+  .editing .label-text,[contenteditable="true"]{outline:2px dashed #cfc7ff;border-radius:8px;padding:2px 4px}
+  .form-inline{display:none; gap:8px; margin-top:8px}
+  .editing .form-inline{display:flex}
+  .input{border:1px solid #ddd;border-radius:10px;padding:8px 10px}
+  .small{font-size:.9rem;opacity:.9}
+</style>
+</head>
+<body>
+  <a href="../index.html" class="btn" style="position:fixed;top:16px;right:16px;z-index:1000;">Back to Home</a>
+  <div class="container">
+    <div class="card">
+      <h1>Daily Quest – JLPT N2</h1>
+      <div class="subtitle">ทำภารกิจประจำวันเพื่อสะสม EXP</div>
+
+      <div class="toolbar">
+        <button id="toggleEdit" class="btn">โหมดแก้ไข</button>
+        <button id="addQuest" class="btn">เพิ่มภารกิจ</button>
+        <button id="resetToday" class="btn danger">รีเซ็ตภารกิจวันนี้</button>
+        <button id="clearAll" class="btn">ล้างข้อมูลทั้งหมด</button>
+      </div>
+
+      <div class="progress-wrap"><div id="progress" class="progress-bar"></div></div>
+      <div id="totalEXP">Total EXP: 0</div>
+
+      <div id="list"></div>
+
+      <div class="small" style="text-align:center;margin-top:10px">เคล็ดลับ: คลิก “โหมดแก้ไข” เพื่อแก้ข้อความ/EXP หรือลบรายการ</div>
+    </div>
+  </div>
+
+<script>
+/* ---------- State & Storage ---------- */
+const LS_QUESTS = "quests_v2";       // โครงสร้างภารกิจ
+const LS_CHECKS = "checks_v2";       // สถานะเช็ควันนี้
+let editMode = false;
+
+const defaults = [
+  { id: "quest1", text: "ท่องศัพท์ใหม่ 10 คำ", exp: 50 },
+  { id: "quest2", text: "คันจิใหม่ 5 ตัว", exp: 30 },
+  { id: "quest3", text: "เรียนไวยากรณ์ 1 รูปแบบ + แต่งประโยค", exp: 40 },
+  { id: "quest4", text: "อ่านบทความสั้น 1 ย่อหน้า", exp: 25 },
+  { id: "quest5", text: "ฟังภาษาญี่ปุ่น 5 นาที", exp: 25 },
+  { id: "quest6", text: "ทบทวน Flashcards 1 รอบ", exp: 20 },
+];
+
+function loadQuests(){
+  const raw = localStorage.getItem(LS_QUESTS);
+  try { return raw ? JSON.parse(raw) : defaults.slice(); }
+  catch { return defaults.slice(); }
+}
+function saveQuests(arr){ localStorage.setItem(LS_QUESTS, JSON.stringify(arr)); }
+
+function loadChecks(){
+  const raw = localStorage.getItem(LS_CHECKS);
+  try { return raw ? JSON.parse(raw) : {}; }
+  catch { return {}; }
+}
+function saveChecks(map){ localStorage.setItem(LS_CHECKS, JSON.stringify(map)); }
+
+/* ---------- Render ---------- */
+const listEl = document.getElementById("list");
+const totalEXPEl = document.getElementById("totalEXP");
+const progressEl = document.getElementById("progress");
+
+function render(){
+  const quests = loadQuests();
+  const checks = loadChecks();
+  listEl.innerHTML = "";
+
+  quests.forEach(q => {
+    const row = document.createElement("div");
+    row.className = "quest" + (editMode ? " editing" : "");
+    row.dataset.id = q.id;
+
+    // checkbox
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "cb";
+    cb.checked = !!checks[q.id];
+    cb.addEventListener("change", () => {
+      checks[q.id] = cb.checked;
+      saveChecks(checks);
+      updateProgress();
+    });
+
+    // text
+    const label = document.createElement("span");
+    label.className = "label-text";
+    label.textContent = q.text;
+    label.contentEditable = editMode;
+    label.addEventListener("blur", () => {
+      const txt = label.textContent.trim();
+      if (txt && txt !== q.text){
+        q.text = txt;
+        persistQuest(q);
+      } else {
+        label.textContent = q.text; // revert empty edits
+      }
+    });
+
+    // exp
+    const exp = document.createElement("span");
+    exp.className = "exp";
+    exp.textContent = `+${q.exp} EXP`;
+
+    // delete
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "ลบ";
+    del.addEventListener("click", () => removeQuest(q.id));
+
+    // inline edit controls
+    const form = document.createElement("div");
+    form.className = "form-inline";
+    form.innerHTML = `
+      <input type="number" min="1" class="input" style="width:110px" value="${q.exp}" aria-label="EXP"/>
+      <button class="btn primary" type="button">บันทึก EXP</button>
+    `;
+    const expInput = form.querySelector("input");
+    const saveBtn = form.querySelector("button");
+    saveBtn.addEventListener("click", () => {
+      const val = parseInt(expInput.value,10);
+      if (Number.isFinite(val) && val>0){
+        q.exp = val;
+        exp.textContent = `+${q.exp} EXP`;
+        persistQuest(q);
+        updateProgress();
+      }
+    });
+
+    row.append(cb,label,exp,del,form);
+    listEl.appendChild(row);
+  });
+
+  updateProgress();
+}
+
+function persistQuest(updated){
+  const quests = loadQuests().map(x => x.id===updated.id ? updated : x);
+  saveQuests(quests);
+}
+
+function updateProgress(){
+  const quests = loadQuests();
+  const checks = loadChecks();
+  const max = quests.reduce((s,q)=>s+q.exp,0);
+  const total = quests.reduce((s,q)=>s+(checks[q.id]?q.exp:0),0);
+  const pct = max ? Math.round((total/max)*100) : 0;
+  totalEXPEl.textContent = `Total EXP: ${total}`;
+  progressEl.style.width = pct + "%";
+}
+
+/* ---------- Actions ---------- */
+document.getElementById("toggleEdit").addEventListener("click", () => {
+  editMode = !editMode;
+  document.getElementById("toggleEdit").classList.toggle("primary", editMode);
+  document.getElementById("toggleEdit").textContent = editMode ? "ออกจากโหมดแก้ไข" : "โหมดแก้ไข";
+  render();
+});
+
+document.getElementById("addQuest").addEventListener("click", () => {
+  const text = prompt("ชื่อภารกิจ:");
+  if(!text) return;
+  const exp = parseInt(prompt("EXP เท่าไร?"),10);
+  if(!Number.isFinite(exp) || exp<=0) return alert("กรอก EXP เป็นเลขบวก");
+
+  const quests = loadQuests();
+  // สร้าง id ไม่ซ้ำ
+  const id = "q" + Math.random().toString(36).slice(2,8);
+  quests.push({ id, text: text.trim(), exp });
+  saveQuests(quests);
+  const checks = loadChecks(); delete checks[id]; saveChecks(checks);
+  render();
+});
+
+document.getElementById("resetToday").addEventListener("click", () => {
+  if(!confirm("รีเซ็ตสถานะเช็ควันนี้ทั้งหมด?")) return;
+  saveChecks({});
+  render();
+});
+
+document.getElementById("clearAll").addEventListener("click", () => {
+  if(!confirm("ล้างข้อมูลทั้งหมด (รายการ + สถานะ)?")) return;
+  localStorage.removeItem(LS_QUESTS);
+  localStorage.removeItem(LS_CHECKS);
+  render();
+});
+
+function removeQuest(id){
+  if(!confirm("ลบภารกิจนี้?")) return;
+  const quests = loadQuests().filter(q => q.id!==id);
+  saveQuests(quests);
+  const checks = loadChecks(); delete checks[id]; saveChecks(checks);
+  render();
+}
+
+/* ---------- Init ---------- */
+render();
+</script>
+</body>
+</html>
