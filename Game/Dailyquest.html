@@ -64,6 +64,17 @@
     .cb{transition:none}
     .quest:hover{box-shadow:0 4px 14px rgba(50,20,120,.06)}
   }
+
+  /* Lite mode: reduce heavy paints (blur, big shadows, radial overlays) */
+  body.lite{
+    background:
+      /* remove radial layers, keep simple gradient */
+      linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 45%, var(--bg3) 100%);
+  }
+  body.lite .card{backdrop-filter:none; box-shadow:0 4px 10px rgba(50,20,120,.08)}
+  body.lite .btn{box-shadow:none}
+  body.lite .quest{box-shadow:0 4px 10px rgba(50,20,120,.06)}
+  body.lite .quest:hover{box-shadow:0 4px 10px rgba(50,20,120,.06)}
 </style>
 </head>
 <body>
@@ -74,6 +85,7 @@
       <div class="subtitle">ทำภารกิจประจำวันเพื่อสะสม EXP</div>
 
       <div class="toolbar">
+        <button id="toggleLite" class="btn">โหมดประหยัด: อัตโนมัติ</button>
         <button id="toggleEdit" class="btn">โหมดแก้ไข</button>
         <button id="addQuest" class="btn">เพิ่มภารกิจ</button>
         <button id="resetToday" class="btn danger">รีเซ็ตภารกิจวันนี้</button>
@@ -97,6 +109,10 @@ let editMode = false;
 // In-memory caches to avoid repeated JSON parse/serialize
 let questsState = null;
 let checksState = null;
+// Lite mode preference (auto/on/off)
+const LS_LITE = "lite_pref_v1";
+const LITE_AUTO = "auto", LITE_ON = "on", LITE_OFF = "off";
+let litePref = LITE_AUTO;
 
 const defaults = [
   { id: "quest1", text: "ท่องศัพท์ใหม่ 10 คำ", exp: 50 },
@@ -125,6 +141,27 @@ function saveChecks(map){ localStorage.setItem(LS_CHECKS, JSON.stringify(map)); 
 const listEl = document.getElementById("list");
 const totalEXPEl = document.getElementById("totalEXP");
 const progressEl = document.getElementById("progress");
+const toggleLiteBtn = document.getElementById("toggleLite");
+
+/* ---------- Lite Mode Helpers ---------- */
+function systemPrefersLite(){
+  const prMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const prData = window.matchMedia && matchMedia('(prefers-reduced-data: reduce)').matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  return !!(prMotion || prData || saveData);
+}
+function loadLitePref(){
+  const v = localStorage.getItem(LS_LITE);
+  return (v===LITE_ON || v===LITE_OFF || v===LITE_AUTO) ? v : LITE_AUTO;
+}
+function saveLitePref(v){ localStorage.setItem(LS_LITE, v); }
+function applyLite(){
+  const active = (litePref===LITE_ON) || (litePref===LITE_AUTO && systemPrefersLite());
+  document.body.classList.toggle('lite', active);
+  const label = litePref===LITE_AUTO ? 'อัตโนมัติ' : (litePref===LITE_ON ? 'เปิด' : 'ปิด');
+  toggleLiteBtn.textContent = `โหมดประหยัด: ${label}`;
+  toggleLiteBtn.classList.toggle('primary', active);
+}
 
 function render(){
   const quests = questsState;
@@ -223,6 +260,24 @@ document.getElementById("toggleEdit").addEventListener("click", () => {
   render();
 });
 
+toggleLiteBtn.addEventListener("click", () => {
+  litePref = litePref===LITE_AUTO ? LITE_ON : litePref===LITE_ON ? LITE_OFF : LITE_AUTO;
+  saveLitePref(litePref);
+  applyLite();
+});
+
+// React to system preference changes only in AUTO mode
+try{
+  const m1 = matchMedia('(prefers-reduced-motion: reduce)');
+  const m2 = matchMedia('(prefers-reduced-data: reduce)');
+  const onChange = () => { if(litePref===LITE_AUTO) applyLite(); };
+  if('addEventListener' in m1) m1.addEventListener('change', onChange); else if('addListener' in m1) m1.addListener(onChange);
+  if('addEventListener' in m2) m2.addEventListener('change', onChange); else if('addListener' in m2) m2.addListener(onChange);
+  if(navigator.connection && typeof navigator.connection.addEventListener==='function'){
+    navigator.connection.addEventListener('change', onChange);
+  }
+}catch(_){/* noop */}
+
 document.getElementById("addQuest").addEventListener("click", () => {
   const text = prompt("ชื่อภารกิจ:");
   if(!text) return;
@@ -263,9 +318,11 @@ function removeQuest(id){
 }
 
 /* ---------- Init ---------- */
-// Initialize caches once, then render
+// Initialize caches & lite preference, then render
 questsState = loadQuests();
 checksState = loadChecks();
+litePref = loadLitePref();
+applyLite();
 render();
 </script>
 </body>
