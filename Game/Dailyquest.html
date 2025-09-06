@@ -34,10 +34,13 @@
   .btn.primary{background:#6b46ff;color:#fff;border-color:#5c3de0}
   .btn.danger{background:#ffe8e8;border-color:#ffc8c8;color:#a00000}
   .progress-wrap{margin:14px 0 8px;background:#f7f5ff;border:1px solid var(--accent-weak);border-radius:999px;padding:6px}
-  .progress-bar{height:14px;width:0%;background:linear-gradient(90deg,#6b46ff,#9a7bff);border-radius:999px;transition:width .25s ease}
+  /* Cheaper progress animation via transform (no layout) */
+  .progress-bar{height:14px;width:100%;background:linear-gradient(90deg,#6b46ff,#9a7bff);border-radius:999px;transition:transform .25s ease;transform-origin:left;transform:scaleX(0)}
   #totalEXP{text-align:center;font-size:1.1rem;margin-top:10px;color:#2d2166;font-weight:600}
+  /* Isolate each row for cheaper paints and allow skipping offscreen */
   .quest{background:#fff;border:1px solid #ece9ff;border-radius:var(--radius);padding:14px 16px;margin:12px 0;
-    box-shadow:0 4px 14px rgba(50,20,120,.06);display:flex;align-items:center;gap:12px;position:relative}
+    box-shadow:0 4px 14px rgba(50,20,120,.06);display:flex;align-items:center;gap:12px;position:relative;
+    content-visibility:auto;contain-intrinsic-size:40px 300px}
   .quest:hover{box-shadow:0 10px 22px rgba(50,20,120,.12);border-color:#e1dbff}
   .cb{appearance:none;width:22px;height:22px;border-radius:8px;border:2px solid var(--accent);background:#fff;
     display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .2s}
@@ -54,6 +57,13 @@
   .editing .form-inline{display:flex}
   .input{border:1px solid #ddd;border-radius:10px;padding:8px 10px}
   .small{font-size:.9rem;opacity:.9}
+
+  /* Honor reduced-motion: disable transitions and hover elevation */
+  @media (prefers-reduced-motion: reduce){
+    .progress-bar{transition:none}
+    .cb{transition:none}
+    .quest:hover{box-shadow:0 4px 14px rgba(50,20,120,.06)}
+  }
 </style>
 </head>
 <body>
@@ -84,6 +94,9 @@
 const LS_QUESTS = "quests_v2";       // โครงสร้างภารกิจ
 const LS_CHECKS = "checks_v2";       // สถานะเช็ควันนี้
 let editMode = false;
+// In-memory caches to avoid repeated JSON parse/serialize
+let questsState = null;
+let checksState = null;
 
 const defaults = [
   { id: "quest1", text: "ท่องศัพท์ใหม่ 10 คำ", exp: 50 },
@@ -114,8 +127,8 @@ const totalEXPEl = document.getElementById("totalEXP");
 const progressEl = document.getElementById("progress");
 
 function render(){
-  const quests = loadQuests();
-  const checks = loadChecks();
+  const quests = questsState;
+  const checks = checksState;
   listEl.innerHTML = "";
 
   quests.forEach(q => {
@@ -129,8 +142,8 @@ function render(){
     cb.className = "cb";
     cb.checked = !!checks[q.id];
     cb.addEventListener("change", () => {
-      checks[q.id] = cb.checked;
-      saveChecks(checks);
+      checksState[q.id] = cb.checked;
+      saveChecks(checksState);
       updateProgress();
     });
 
@@ -187,18 +200,19 @@ function render(){
 }
 
 function persistQuest(updated){
-  const quests = loadQuests().map(x => x.id===updated.id ? updated : x);
-  saveQuests(quests);
+  questsState = questsState.map(x => x.id===updated.id ? updated : x);
+  saveQuests(questsState);
 }
 
 function updateProgress(){
-  const quests = loadQuests();
-  const checks = loadChecks();
+  const quests = questsState;
+  const checks = checksState;
   const max = quests.reduce((s,q)=>s+q.exp,0);
   const total = quests.reduce((s,q)=>s+(checks[q.id]?q.exp:0),0);
   const pct = max ? Math.round((total/max)*100) : 0;
   totalEXPEl.textContent = `Total EXP: ${total}`;
-  progressEl.style.width = pct + "%";
+  // Use transform for cheap composite animation
+  progressEl.style.transform = `scaleX(${pct/100})`;
 }
 
 /* ---------- Actions ---------- */
@@ -215,18 +229,19 @@ document.getElementById("addQuest").addEventListener("click", () => {
   const exp = parseInt(prompt("EXP เท่าไร?"),10);
   if(!Number.isFinite(exp) || exp<=0) return alert("กรอก EXP เป็นเลขบวก");
 
-  const quests = loadQuests();
   // สร้าง id ไม่ซ้ำ
   const id = "q" + Math.random().toString(36).slice(2,8);
-  quests.push({ id, text: text.trim(), exp });
-  saveQuests(quests);
-  const checks = loadChecks(); delete checks[id]; saveChecks(checks);
+  questsState.push({ id, text: text.trim(), exp });
+  saveQuests(questsState);
+  delete checksState[id];
+  saveChecks(checksState);
   render();
 });
 
 document.getElementById("resetToday").addEventListener("click", () => {
   if(!confirm("รีเซ็ตสถานะเช็ควันนี้ทั้งหมด?")) return;
-  saveChecks({});
+  checksState = {};
+  saveChecks(checksState);
   render();
 });
 
@@ -234,18 +249,23 @@ document.getElementById("clearAll").addEventListener("click", () => {
   if(!confirm("ล้างข้อมูลทั้งหมด (รายการ + สถานะ)?")) return;
   localStorage.removeItem(LS_QUESTS);
   localStorage.removeItem(LS_CHECKS);
+  questsState = defaults.slice();
+  checksState = {};
   render();
 });
 
 function removeQuest(id){
   if(!confirm("ลบภารกิจนี้?")) return;
-  const quests = loadQuests().filter(q => q.id!==id);
-  saveQuests(quests);
-  const checks = loadChecks(); delete checks[id]; saveChecks(checks);
+  questsState = questsState.filter(q => q.id!==id);
+  saveQuests(questsState);
+  delete checksState[id]; saveChecks(checksState);
   render();
 }
 
 /* ---------- Init ---------- */
+// Initialize caches once, then render
+questsState = loadQuests();
+checksState = loadChecks();
 render();
 </script>
 </body>
